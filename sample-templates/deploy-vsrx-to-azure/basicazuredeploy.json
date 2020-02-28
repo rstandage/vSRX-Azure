@@ -123,6 +123,8 @@
                   "disablePasswordAuthentication": false
                 }
               },
+              "networkProfile": {
+              },
               "diagnosticsProfile": {
                 "bootDiagnostics": {
                   "enabled": true,
