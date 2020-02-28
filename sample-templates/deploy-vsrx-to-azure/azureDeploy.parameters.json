@@ -1,55 +1,137 @@
 {
-  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
-  "contentVersion": "1.0.0.0",
-  "parameters": {
-    "storageAccountName": {
-      "value": "jnstorage"
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",    
+    "parameters" : {
+        "storageAccountName": {
+          "type": "string",
+          "metadata": {
+            "description": "Storage Account Name"
+          }
+        },
+        "vSRX-model": {
+          "type": "string",
+          "allowedValues": [
+            "BYOL",
+            "PAYG - w/Anti Virus"
+          ],
+          "metadata": {
+            "description": "vSRX Model"
+          },
+          "defaultValue": "BYOL"
+        },
+        "virtualMachineSize": {
+          "type": "string",
+          "allowedValues": [
+            "Standard_DS3_v2",
+            "Standard_DS4_v2",
+            "Standard_DS5_v2"
+          ],
+          "metadata": {
+            "description": "vSRX Virtual Machine Size"
+          },
+          "defaultValue": "Standard_DS3_v2"
+        },
+        "vsrx-name": {
+          "type": "string",
+          "metadata": {
+            "description": "vSRX Name"
+          },
+          "defaultValue": "vsrx-gw"
+        },
+        "vsrx-username": {
+          "type": "string",
+          "metadata": {
+            "description": "vSRX user name"
+          },
+          "defaultValue": "demo"
+        },
+        "vsrx-password": {
+          "type": "securestring",
+          "metadata": {
+            "description": "vSRX user password"
+          }
+        }
     },
-    "vSRX-model": {
-      "value": "PAYG - w/Anti Virus"
+   	"variables": {
+	"storageAccountName": "[concat(take(toLower(parameters('storageAccountName')), 11), uniqueString(resourceGroup().id, deployment().name))]",
+	"storageContainerName": "vsrx",
+        "vsrxVM": {
+            "vmSize": "[parameters('virtualMachineSize')]",
+            "vmName": "[parameters('vsrx-name')]"
+        },
+        "plan-byol": {
+          "name": "vsrx-byol-azure-image",
+          "publisher": "juniper-networks",
+          "product": "vsrx-next-generation-firewall"
+        },
+        "plan-payg-b1": {
+          "name": "vsrx-azure-image-payg-b1",
+          "publisher": "juniper-networks",
+          "product": "vsrx-next-generation-firewall-payg"
+        },
+        "image-byol": {
+          "publisher": "juniper-networks",
+          "offer": "vsrx-next-generation-firewall",
+          "sku": "vsrx-byol-azure-image",
+          "version": "latest"
+        },
+        "image-payg-b1": {
+          "publisher": "juniper-networks",
+          "offer": "vsrx-next-generation-firewall-payg",
+          "sku": "vsrx-azure-image-payg-b1",
+          "version": "latest"
+        }
     },
-    "virtualMachineSize": {
-      "value": "Standard_DS3_v2"
-    },
-    "vsrx-name": {
-      "value": "vsrx-vpn01"
-    },
-    "vsrx-addr-ge-0-0-0": {
-      "value": "192.168.10.20"
-    },
-    "vsrx-addr-ge-0-0-1": {
-      "value": "192.168.20.20"
-    },
-    "vsrx-username": {
-      "value": "demo"
-    },
-    "vsrx-password": {
-      "value": "Demo123456"
-    },
-    "vnet-name": {
-      "value": "vsrx-vnet"
-    },
-    "vnet-prefix": {
-      "value": "192.168.0.0/16"
-    },
-    "vnet-mgt-subnet-name": {
-      "value": "mgt-subnet"
-    },
-    "vnet-mgt-subnet-prefix": {
-      "value": "192.168.0.0/24"
-    },
-    "vnet-trust-subnet-name": {
-      "value": "trust-subnet"
-    },
-    "vnet-trust-subnet-prefix": {
-      "value": "192.168.20.0/24"
-    },
-    "vnet-untrust-subnet-name": {
-      "value": "untrust-subnet"
-    },
-    "vnet-untrust-subnet-prefix": {
-      "value": "192.168.10.0/24"
-    }
-  }
-}
 
+    "resources": [  
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "name": "[variables('storageAccountName')]",
+            "apiVersion": "2015-06-15",
+            "location": "[resourceGroup().location]",
+            "properties": {
+              "accountType": "Standard_LRS"
+            }
+        },
+        {
+          "apiVersion": "2016-03-30",
+          "name": "[variables('vsrxVM').vmName]",
+          "type": "Microsoft.Compute/virtualMachines",
+          "location": "[resourceGroup().location]",
+	  "plan": "[if(equals(parameters('vSRX-model'), 'BYOL'), variables('plan-byol'), variables('plan-payg-b1'))]",
+          "properties": {
+              "hardwareProfile": {
+                "vmSize": "[variables('vsrxVM').vmSize]"
+              },
+	      "storageProfile": {
+		  "imageReference": "[if(equals(parameters('vSRX-model'), 'BYOL'), variables('image-byol'), variables('image-payg-b1'))]",
+		  "osDisk": {
+	              "osType": "Linux",
+	              "name": "[concat(variables('vsrxVM').vmName, '-Disk')]",
+		      "vhd": {
+		          "uri": "[concat(reference(concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName')), '2015-06-15').primaryEndpoints.blob, variables('storageContainerName'), '/', variables('vsrxVM').vmName, uniquestring(resourceGroup().id), '.vhd')]"
+			  },
+                  "caching": "ReadWrite",
+                  "createOption": "FromImage"
+                }
+              },
+              "osProfile": {
+                "computerName": "[variables('vsrxVM').vmName]",
+                "adminUsername": "[parameters('vsrx-username')]",
+                "adminPassword": "[parameters('vsrx-password')]",
+                "linuxConfiguration": {
+                  "disablePasswordAuthentication": false
+                }
+              },
+              "diagnosticsProfile": {
+                "bootDiagnostics": {
+                  "enabled": true,
+                  "storageUri": "[reference(concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName')), '2015-06-15').primaryEndpoints.blob]"
+                }
+              }
+          }
+        }
+    ],
+
+    "outputs": { }
+}
