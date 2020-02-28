@@ -194,7 +194,9 @@
             "type": "Microsoft.Compute/virtualMachines",
             "location": "[resourceGroup().location]",
             "plan": "[if(equals(parameters('vSRX-model'), 'BYOL'), variables('plan-byol'), variables('plan-payg-b1'))]",
-            "dependsOn": "[concat('Microsoft.Network/networkInterfaces/', variables('vsrxVM').mgtNicName)]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkInterfaces/', variables('vsrxVM').mgtNicName)]",
+            ],
             "properties": {
                 "hardwareProfile": {
                     "vmSize": "[variables('vsrxVM').vmSize]"
